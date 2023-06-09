@@ -1,0 +1,110 @@
+C51 COMPILER V9.59.0.0   EEPROM                                                            06/01/2023 14:31:33 PAGE 1   
+
+
+C51 COMPILER V9.59.0.0, COMPILATION OF MODULE EEPROM
+OBJECT MODULE PLACED IN .\Objects\EEPROM.obj
+COMPILER INVOKED BY: C:\Keil_C51\C51\BIN\C51.EXE EEPROM.c COMPACT BROWSE DEBUG OBJECTEXTEND PRINT(.\Listings\EEPROM.lst)
+                    - OBJECT(.\Objects\EEPROM.obj)
+
+line level    source
+
+   1          #include <REGX52.H>
+   2          #include "EEPROM.h"
+   3          
+   4          
+   5          /*----------------------------
+   6          Disable ISP/IAP/EEPROM function
+   7          Make MCU in a safe state
+   8          ----------------------------*/
+   9          //禁止ISP/IAP/EEPROM函数，确保MCU处于安全状态
+  10          void IspIdle()
+  11          {
+  12   1          ISP_CONTR = 0;                  //Close ISP function
+  13   1          ISP_CMD = 0;                    //Clear command to standby
+  14   1          ISP_TRIG = 0;                   //Clear trigger register
+  15   1          ISP_ADDRH = 0x80;               //Data ptr point to non-EEPROM area
+  16   1          ISP_ADDRL = 0;                  //Clear ISP address to prevent misuse
+  17   1      }
+  18          
+  19          /*----------------------------
+  20          Read one byte from ISP/IAP/EEPROM area
+  21          Input: addr (ISP/IAP/EEPROM address)
+  22          Output:Flash data
+  23          ----------------------------*/
+  24          //从EEPROM读取1个字节
+  25          //输入：地址 uint addr
+  26          //输出：数据
+  27          uchar IspReadByte(uint addr)
+  28          {
+  29   1          uchar dat;                       //Data buffer
+  30   1      
+  31   1          ISP_CONTR = ENABLE_ISP;         //Open ISP function, and set wait time
+  32   1          ISP_CMD = CMD_READ;             //Set ISP/IAP/EEPROM READ command
+  33   1          ISP_ADDRL = addr;               //Set ISP/IAP/EEPROM address low
+  34   1          ISP_ADDRH = addr >> 8;          //Set ISP/IAP/EEPROM address high
+  35   1          ISP_TRIG = 0x46;                //Send trigger command1 (0x46)
+  36   1          ISP_TRIG = 0xb9;                //Send trigger command2 (0xb9)
+  37   1          _nop_();                        //MCU will hold here until ISP/IAP/EEPROM operation complete
+  38   1          dat = ISP_DATA;                 //Read ISP/IAP/EEPROM data
+  39   1          IspIdle();                      //Close ISP/IAP/EEPROM function
+  40   1      
+  41   1          return dat;                     //Return Flash data
+  42   1      }
+  43          
+  44          /*----------------------------
+  45          Program one byte to ISP/IAP/EEPROM area
+  46          Input: addr (ISP/IAP/EEPROM address)
+  47                 dat (ISP/IAP/EEPROM data)
+  48          Output:-
+  49          ----------------------------*/
+  50          //写1个字节到ISP/IAP/EEPROM
+  51          //输入：        地址 uint addr
+  52          //                      数据 uchar dat
+  53          void IspWriteByte(uint addr, uchar dat)
+  54          {
+C51 COMPILER V9.59.0.0   EEPROM                                                            06/01/2023 14:31:33 PAGE 2   
+
+  55   1          ISP_CONTR = ENABLE_ISP;         //Open ISP function, and set wait time
+  56   1          ISP_CMD = CMD_PROGRAM;          //Set ISP/IAP/EEPROM PROGRAM command
+  57   1          ISP_ADDRL = addr;               //Set ISP/IAP/EEPROM address low
+  58   1          ISP_ADDRH = addr >> 8;          //Set ISP/IAP/EEPROM address high
+  59   1          ISP_DATA = dat;                 //Write ISP/IAP/EEPROM data
+  60   1          ISP_TRIG = 0x46;                //Send trigger command1 (0x46)
+  61   1          ISP_TRIG = 0xb9;                //Send trigger command2 (0xb9)
+  62   1          _nop_();                        //MCU will hold here until ISP/IAP/EEPROM operation complete
+  63   1          IspIdle();
+  64   1      }
+  65          
+  66          /*----------------------------
+  67          Erase one sector area
+  68          Input: addr (ISP/IAP/EEPROM address)
+  69          Output:-
+  70          ----------------------------*/
+  71          //擦除1个扇区
+  72          //输入：地址 uint addr
+  73          void IspEraseSector(uint addr)
+  74          {
+  75   1          ISP_CONTR = ENABLE_ISP;         //Open IAP function, and set wait time
+  76   1          ISP_CMD = CMD_ERASE;            //Set ISP/IAP/EEPROM ERASE command
+  77   1          ISP_ADDRL = addr;               //Set ISP/IAP/EEPROM address low
+  78   1          ISP_ADDRH = addr >> 8;          //Set ISP/IAP/EEPROM address high
+  79   1          ISP_TRIG = 0x46;                //Send trigger command1 (0x46)
+  80   1          ISP_TRIG = 0xb9;                //Send trigger command2 (0xb9)
+  81   1          _nop_();                        //MCU will hold here until ISP/IAP/EEPROM operation complete
+  82   1          IspIdle();
+  83   1      }
+  84          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =     82    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

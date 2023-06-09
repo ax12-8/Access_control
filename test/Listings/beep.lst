@@ -1,0 +1,58 @@
+C51 COMPILER V9.59.0.0   BEEP                                                              06/05/2023 23:41:43 PAGE 1   
+
+
+C51 COMPILER V9.59.0.0, COMPILATION OF MODULE BEEP
+OBJECT MODULE PLACED IN .\Objects\beep.obj
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.EXE beep.c LARGE ROM(SMALL) OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRIN
+                    -T(.\Listings\beep.lst) TABS(2) OBJECT(.\Objects\beep.obj)
+
+line level    source
+
+   1          #include <REGX52.H>
+   2          #include "Delay.h"
+   3          #include "beep.h"
+   4          
+   5          void BeepOnce()
+   6          { 
+   7   1        Beep = 0;
+   8   1        Delay(100);;
+   9   1        Beep = 1;       
+  10   1      } 
+  11          void BeepTwice()
+  12          {
+  13   1        Beep = 0;
+  14   1        Delay(30);
+  15   1        Beep = 1; 
+  16   1        Delay(30);  
+  17   1        Beep = 0;
+  18   1        Delay(30);
+  19   1        Beep = 1; 
+  20   1      }
+  21          void Beep3times()
+  22          {
+  23   1        Beep = 0;
+  24   1        Delay(30);
+  25   1        Beep = 1; 
+  26   1        Delay(30);  
+  27   1        Beep = 0;
+  28   1        Delay(30);
+  29   1        Beep = 1; 
+  30   1        Delay(30);
+  31   1        Beep = 0;
+  32   1        Delay(30);
+  33   1        Beep = 1; 
+  34   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =     81    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

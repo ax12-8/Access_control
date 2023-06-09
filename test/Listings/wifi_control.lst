@@ -1,0 +1,177 @@
+C51 COMPILER V9.59.0.0   WIFI_CONTROL                                                      06/06/2023 00:10:54 PAGE 1   
+
+
+C51 COMPILER V9.59.0.0, COMPILATION OF MODULE WIFI_CONTROL
+OBJECT MODULE PLACED IN .\Objects\wifi_control.obj
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.EXE wifi_control.c LARGE OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.
+                    -\Listings\wifi_control.lst) TABS(2) OBJECT(.\Objects\wifi_control.obj)
+
+line level    source
+
+   1          #include <REGX52.H>
+   2          #include <stdlib.h>
+   3          #include "wifi_control.h"
+   4          #include "uart.h"
+   5          #include "LCD1602.h"
+   6          #define uchar unsigned char 
+   7          #define uint unsigned int   
+   8          
+   9          //L298  
+  10          sbit MA=P2^3; 
+  11          sbit MB=P2^4;
+  12          
+  13          /*
+  14             电机转动函数
+  15          */
+  16          
+  17          void fanzhuan()
+  18          {
+  19   1        MA=0;MB=1;  //开
+  20   1        Delay(6);
+  21   1        MA=0;MB=0;
+  22   1      }
+  23          
+  24          void zhengzhuan()
+  25          {
+  26   1        MA=1;MB=0;  //关
+  27   1        Delay(6);
+  28   1        MA=0;MB=0;
+  29   1      }
+  30          
+  31          
+  32          //ESP8266 WIFI发送AT指令
+  33          //pbuf：AT指令，字符串格式，如："AT"
+  34          void ESP8266_SendCmd(u8 *pbuf)
+  35          {
+  36   1        while(*pbuf!='\0') //遇到空格跳出循环 
+  37   1        {
+  38   2          UART_SendData(*pbuf);
+  39   2          delay_10us(5);
+  40   2          pbuf++; 
+  41   2        }
+  42   1        delay_10us(5);
+  43   1        UART_SendData('\r');//回车
+  44   1        delay_10us(5);
+  45   1        UART_SendData('\n');//换行
+  46   1        Delay(1000);
+  47   1      }
+  48          
+  49          //ESP8266 WIFI发送数据到APP
+  50          //pbuf：数据
+  51          void ESP8266_SendData(u8 *pbuf)
+  52          {
+  53   1        ESP8266_SendCmd("AT+CIPSEND=0,7");
+  54   1        while(*pbuf!='\0') //遇到空格跳出循环 
+C51 COMPILER V9.59.0.0   WIFI_CONTROL                                                      06/06/2023 00:10:54 PAGE 2   
+
+  55   1        {
+  56   2          UART_SendData(*pbuf);
+  57   2          delay_10us(5);
+  58   2          pbuf++; 
+  59   2        }
+  60   1        UART_SendData('\n');//换行  
+  61   1      }
+  62          
+  63          //ESP8266-WIFI模块工作模式初始化
+  64          void ESP8266_ModeInit(void)
+  65          {
+  66   1        ESP8266_SendCmd("ATE0");
+  67   1        ESP8266_SendCmd("AT+CWMODE=1");
+  68   1        ESP8266_SendCmd("AT+CIPMUX=1");//多连接
+  69   1        ESP8266_SendCmd("AT+CIPSERVER=1,8266"); //启动TCP/IP 端口为8266 实现基于网络控制  
+  70   1      } 
+  71          
+  72          //WIFI控制初始化
+  73          void wifi_control_init(void)
+  74          {
+  75   1        
+  76   1        ES=1;//允许串口中断
+  77   1      }
+  78          
+  79          
+  80          //串口中断服务函数
+  81          //接收手机APP发送的信号后控制板载资源
+  82          void UART_IRQn() interrupt 4
+  83          {
+  84   1        static u8 i=0;
+  85   1      
+  86   1        if(RI)
+  87   1        {
+  88   2          RI=0;
+  89   2          UART_RX_BUF[i]=SBUF;//读取接收到的数据
+  90   2          if(UART_RX_BUF[0]=='+')i++;
+  91   2          else i=0;
+  92   2          if(i==10)
+  93   2          {
+  94   3            if(UART_RX_BUF[9]-'A'==20)
+  95   3            {
+  96   4              fanzhuan();
+  97   4              i=0;
+  98   4            }
+  99   3            if(UART_RX_BUF[9]-'A'==3)
+ 100   3            {
+ 101   4              zhengzhuan();
+ 102   4              i=0;
+ 103   4            }
+ 104   3          }
+ 105   2          //读取到的数据
+ 106   2          if(i==23)
+ 107   2          {
+ 108   3            LCD_ShowChar(1,1,UART_RX_BUF[10]);
+ 109   3            LCD_ShowChar(1,2,UART_RX_BUF[11]);
+ 110   3            LCD_ShowChar(1,3,UART_RX_BUF[12]);
+ 111   3            LCD_ShowChar(1,4,UART_RX_BUF[13]);
+ 112   3            LCD_ShowChar(1,5,UART_RX_BUF[14]);
+ 113   3            LCD_ShowChar(1,6,UART_RX_BUF[15]);
+ 114   3            LCD_ShowChar(1,7,UART_RX_BUF[16]);
+ 115   3            LCD_ShowChar(1,8,UART_RX_BUF[17]);
+ 116   3            LCD_ShowChar(1,9,UART_RX_BUF[18]);
+C51 COMPILER V9.59.0.0   WIFI_CONTROL                                                      06/06/2023 00:10:54 PAGE 3   
+
+ 117   3            LCD_ShowString(1,11,"Week");
+ 118   3            LCD_ShowChar(1,16,UART_RX_BUF[22]);
+ 119   3            if(UART_RX_BUF[19]-'A'==50)
+ 120   3              LCD_ShowString(2,1,"Sunny");
+ 121   3            if(UART_RX_BUF[19]-'A'==34)
+ 122   3              LCD_ShowString(2,1,"Cloudy");
+ 123   3            if(UART_RX_BUF[19]-'A'==14)
+ 124   3              LCD_ShowString(2,1,"Overcast");
+ 125   3            if(UART_RX_BUF[19]-'A'==17)
+ 126   3              LCD_ShowString(2,1,"Rainy");
+ 127   3            if(UART_RX_BUF[19]-'A'==3)
+ 128   3              LCD_ShowString(2,1,"Dust");
+ 129   3            if(UART_RX_BUF[19]-'A'==5)
+ 130   3              LCD_ShowString(2,1,"Foggy");
+ 131   3            if(UART_RX_BUF[19]-'A'==39)
+ 132   3              LCD_ShowString(2,1,"Haze");
+ 133   3            if(UART_RX_BUF[19]-'A'==22)
+ 134   3              LCD_ShowString(2,1,"Windy");
+ 135   3            if(UART_RX_BUF[19]-'A'==2)
+ 136   3              LCD_ShowString(2,1,"Cold");
+ 137   3            if(UART_RX_BUF[19]-'A'==7)
+ 138   3              LCD_ShowString(2,1,"Hot");
+ 139   3            LCD_ShowString(2,11,"T:");
+ 140   3            LCD_ShowChar(2,14,UART_RX_BUF[20]);
+ 141   3            LCD_ShowChar(2,15,UART_RX_BUF[21]);
+ 142   3            LCD_ShowString(2,16,"C");
+ 143   3            i=0;
+ 144   3          } 
+ 145   2        }   
+ 146   1      }
+ 147          
+ 148          
+ 149          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    870    ----
+   CONSTANT SIZE    =    133    ----
+   XDATA SIZE       =      1       6
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

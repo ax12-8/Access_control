@@ -1,0 +1,568 @@
+C51 COMPILER V9.59.0.0   MAIN                                                              06/06/2023 00:05:03 PAGE 1   
+
+
+C51 COMPILER V9.59.0.0, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.EXE main.c LARGE OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\Listing
+                    -s\main.lst) TABS(2) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          #include <REGX52.H>
+   2          #include "LCD1602.h"
+   3          #include "AT24C02.h"
+   4          #include "Delay.h"
+   5          #include "MatrixKey.h"
+   6          #include "uart.h"
+   7          #include "wifi_control.h"
+   8          #include "rc522.h"
+   9          
+  10          
+  11          
+  12          
+  13          #define OPEN 0          //锁-开           
+  14          #define CLOSE 1         //锁-关
+  15          
+  16          #define WELCOME 0                 //欢迎页
+  17          #define READ 1                    //读卡正常页
+  18          #define READ_ERR 2                //读卡错误页
+  19          #define SET_MAIN_ADD 10           //设置页-主界面-添加卡片
+  20          #define SET_MAIN_DELETE 20        //设置页-主界面-删除卡片
+  21          #define SET_ADD_PUT 11            //设置页-添加卡片页-提示放置卡片
+  22          #define SET_ADD_INFO 12           //设置页-添加卡片页-显示卡片信息
+  23          #define SET_DELETE_INFO1 21       //设置页-删除卡片页-显示卡片0信息
+  24          #define SET_DELETE_INFO2 22       //设置页-删除卡片页-显示卡片1信息
+  25          #define SET_DELETE_INFO3 23       //设置页-删除卡片页-显示卡片2信息
+  26          #define SET_DELETE_INFO4 24       //设置页-删除卡片页-显示卡片3信息
+  27          #define SET_SUCCESS 3             //设置成功页
+  28          
+  29          
+  30          sbit KEY_BACK = P3^7;             //返回键用P2.4
+  31          
+  32          
+  33          extern uchar UID[4],Temp[4];
+  34          extern uchar UI0[4];                //卡片0ID数组
+  35          extern uchar UI1[4];              //卡片1ID数组
+  36          extern uchar UI2[4];              //卡片2ID数组
+  37          extern uchar UI3[4];              //卡片3ID数组
+  38          
+  39          uchar code *Disp0="Password:" ;
+  40          uchar code *Disp1="        " ;            
+  41          uchar code *Disp2="Err Card";
+  42          uchar code *Disp3="CardNO.:";
+  43          uchar code *Disp4="OPEN";
+  44          uchar code *Disp5="Add New Card";
+  45          uchar code *Disp6="Delete Card";
+  46          uchar code *Disp7="Put Card On";
+  47          uchar code *Disp8="Success";
+  48          uchar code *Disp9="Delete:";
+  49          
+  50          uchar count0;   //定时器0.5ms计时
+  51          uchar KeyNum;        //键盘扫描值
+  52          uchar LOCK;          //锁-状态
+  53          uint Num=12345;      //存储的密码
+  54          uint Password;
+C51 COMPILER V9.59.0.0   MAIN                                                              06/06/2023 00:05:03 PAGE 2   
+
+  55          uint Count,times=0;    //计数
+  56          uint locktime;                    //开锁后延时时间
+  57          uint page;  
+  58          char cardnum;                     //卡自定义编号
+  59          
+  60          void Lock_Num();
+  61          void Change_Password();
+  62          void ctrl_process();
+  63          void RFID_Check();                //RFID读卡函数声明
+  64          void ShowID(uchar *p);            //显示卡ID函数声明
+  65          void Tmr0init();                  //定时器0初始化函数声明
+  66          void LCD_page(uchar pagenum);       //LCD显示函数声明
+  67          void keyscan();                   //按键扫描函数声明
+  68          void zhengzhuan();               //闸机-关
+  69          void fanzhuan();              //闸机-开
+  70          //void ReadEEPROM(uint sectr);      //从EEPROM读取卡ID号
+  71          
+  72          
+  73          void main(void)
+  74          { 
+  75   1        LOCK = CLOSE;     //默认锁状态-关
+  76   1        LCD_Init();
+  77   1        LCD_ShowString(1,1,Disp0);
+  78   1        UART_Init();
+  79   1        ESP8266_ModeInit();
+*** WARNING C206 IN LINE 79 OF main.c: 'ESP8266_ModeInit': missing function-prototype
+  80   1        while (1)
+  81   1        {
+  82   2          Lock_Num();
+  83   2        }
+  84   1      
+  85   1      }
+  86          
+  87          
+  88          
+  89          void Lock_Num()
+  90          {
+  91   1        AT24C02_WriteByte(0, Num % 256);     //存储初始密码
+  92   1        Delay(5);
+  93   1        AT24C02_WriteByte(1, Num / 256);
+  94   1        Delay(5);
+  95   1        KeyNum = MatrixKey();
+  96   1        if(KeyNum)
+  97   1        {
+  98   2          if(KeyNum<=10)  //如果S1~S10按键按下，输入密码
+  99   2          {
+ 100   3            if(Count<5) //如果输入次数小于5
+ 101   3            {
+ 102   4              Password*=10;       //密码左移一位
+ 103   4              Password+=KeyNum%10;    //获取一位密码
+ 104   4              Count++;  //计次加一
+ 105   4            }
+ 106   3            LCD_ShowNum(2,1,Password,5);  //更新显示
+ 107   3          }
+ 108   2        
+ 109   2          if(KeyNum==11)  //如果S11按键按下，确认
+ 110   2          {
+ 111   3            if(times<=3)
+ 112   3            {
+ 113   4              Num = AT24C02_ReadByte(0);
+ 114   4              Num |= AT24C02_ReadByte(1) << 8;  //读取数据
+ 115   4              if(Password==Num) //如果密码等于正确密码
+C51 COMPILER V9.59.0.0   MAIN                                                              06/06/2023 00:05:03 PAGE 3   
+
+ 116   4              { 
+ 117   5                fanzhuan();
+ 118   5                Delay(1000);
+ 119   5                zhengzhuan();
+ 120   5                LCD_Clear();
+ 121   5      
+ 122   5                LCD_ShowString(1,7,"PASS"); //显示PASS
+ 123   5                Password=0;   //密码清零                                         
+ 124   5                Count=0;    //计次清零
+ 125   5                times=0;
+ 126   5                LOCK = OPEN;
+ 127   5              }
+ 128   4              else        //否则
+ 129   4              {
+ 130   5                times++;
+ 131   5                LCD_ShowString(2,7,"ERR");  //显示ERR
+ 132   5                Delay(1000);
+ 133   5                LCD_Clear();
+ 134   5                Delay(1000);
+ 135   5                Password=0;   //密码清零
+ 136   5                Count=0;    //计次清零
+ 137   5                LCD_ShowString(1,1,Disp0);
+ 138   5                LCD_ShowString(2, 1, Disp1);  //更新显示
+ 139   5              }
+ 140   4            }
+ 141   3            else
+ 142   3            {
+ 143   4              LCD_Clear();
+ 144   4              Delay(1000);
+ 145   4              LCD_ShowString(1,6,"Locked");
+ 146   4              Password=0;   //密码清零
+ 147   4              Count=0;      //计次清零       
+ 148   4              times=0;
+ 149   4            }
+ 150   3          }
+ 151   2          if(KeyNum==12)  //如果S12按键按下，取消
+ 152   2          {
+ 153   3            LCD_Clear();
+ 154   3            Delay(500);
+ 155   3            Password=0;   //密码清零
+ 156   3            Count=0;    //计次清零
+ 157   3            LCD_ShowString(1,1,Disp0);
+ 158   3            LCD_ShowNum(2,1,Password,5);  //更新显示
+ 159   3          }
+ 160   2          if(KeyNum==13)  //修改密码
+ 161   2          {
+ 162   3            if(LOCK == OPEN)
+ 163   3            {
+ 164   4              Password=0;
+ 165   4              LCD_Clear();
+ 166   4              Delay(1000);
+ 167   4              LCD_ShowString(1, 1,"New password:");
+ 168   4              Change_Password();
+ 169   4              LCD_Clear();
+ 170   4              Delay(1000);
+ 171   4              LCD_ShowString(1,1,Disp0);
+ 172   4              LCD_ShowNum(2,1,Password,5);  //更新显示
+ 173   4            }
+ 174   3            else
+ 175   3            { 
+ 176   4              Password=0;
+ 177   4              LCD_ShowString(2, 1,"No permission");
+C51 COMPILER V9.59.0.0   MAIN                                                              06/06/2023 00:05:03 PAGE 4   
+
+ 178   4              Delay(1000);
+ 179   4              LCD_Clear();
+ 180   4              Delay(1000);
+ 181   4              LCD_ShowString(1,1,Disp0);
+ 182   4              LCD_ShowString(2, 1, Disp1);  //更新显示  
+ 183   4            } 
+ 184   3          }
+ 185   2          if(KeyNum==14)  //读取密码
+ 186   2          {
+ 187   3            Num = AT24C02_ReadByte(0);
+ 188   3            Num |= AT24C02_ReadByte(1) << 8;
+ 189   3            LCD_ShowNum(2, 1, Num, 5);
+ 190   3            Delay(1000);
+ 191   3            LCD_ShowString(2, 1, "Read OK ");
+ 192   3            Delay(1000);
+ 193   3            Password=0;   //密码清零
+ 194   3            Count=0;
+ 195   3            LCD_ShowString(2, 1, Disp1);
+ 196   3          }                 
+ 197   2          if(KeyNum==15)
+ 198   2            {
+ 199   3              
+ 200   3              wifi_control_init();
+ 201   3              LCD_Init();
+ 202   3              ESP8266_SendData("weather");
+ 203   3              
+ 204   3            }
+ 205   2          if(KeyNum==16)
+ 206   2          {
+ 207   3            ctrl_process();
+ 208   3          } 
+ 209   2        }
+ 210   1       }
+ 211          
+ 212          void Change_Password()
+ 213          {
+ 214   1        while(1)
+ 215   1        {
+ 216   2          if(LOCK==OPEN)
+ 217   2          {
+ 218   3            KeyNum = MatrixKey();
+ 219   3            if(KeyNum)
+ 220   3            {
+ 221   4              if(KeyNum<=10)  //如果S1~S10按键按下，输入密码
+ 222   4              {
+ 223   5                if(Count<5) //如果输入次数小于5
+ 224   5                {
+ 225   6                  Password*=10;       //密码左移一位
+ 226   6                  Password+=KeyNum%10;    //获取一位密码
+ 227   6                  Count++;  //计次加一
+ 228   6                }
+ 229   5                LCD_ShowNum(2,1,Password,5);  //更新显示
+ 230   5              }
+ 231   4              if(KeyNum==11)
+ 232   4              {
+ 233   5                Num = Password;
+ 234   5                AT24C02_WriteByte(0, Num % 256);     //存储初始密码
+ 235   5                  Delay(5);
+ 236   5                  AT24C02_WriteByte(1, Num / 256);
+ 237   5                  Delay(5);
+ 238   5                LCD_ShowString(2, 1, "Write OK ");
+ 239   5                Delay(500);
+C51 COMPILER V9.59.0.0   MAIN                                                              06/06/2023 00:05:03 PAGE 5   
+
+ 240   5                Password=0;
+ 241   5                LOCK=CLOSE;
+ 242   5              }
+ 243   4              if(KeyNum==12)
+ 244   4              { 
+ 245   5                Password=0;   //密码清零
+ 246   5                Count=0;    //计次清零
+ 247   5                LCD_ShowString(1,1,"New password:");
+ 248   5                LCD_ShowNum(2,1,Password,5);  //更新显示  
+ 249   5              }
+ 250   4            }
+ 251   3          }
+ 252   2          else
+ 253   2          break;
+ 254   2        }
+ 255   1      }
+ 256          
+ 257          
+ 258          void ctrl_process(void)
+ 259          {
+ 260   1        uchar tempcard;
+ 261   1        page = WELCOME;                 //默认在欢迎界面
+ 262   1        Tmr0init();                     //定时器0初始化
+ 263   1        RFID_Init();                    //RFID模块初始化
+ 264   1        LCD_Init();                     //LCD1602初始化函数
+ 265   1        LCD_page(WELCOME);              //显示欢迎页"Welcome!"
+ 266   1      //  ReadEEPROM(SECTOR1);            //从EEPROM扇区1读取卡1ID
+ 267   1      //  ReadEEPROM(SECTOR2);            //从EEPROM扇区2读取卡2ID
+ 268   1      //  ReadEEPROM(SECTOR3);            //从EEPROM扇区3读取卡3ID
+ 269   1      //  ReadEEPROM(SECTOR4);            //从EEPROM扇区4读取卡4ID
+ 270   1        while(1)
+ 271   1        {
+ 272   2          Delay(100);
+ 273   2          if(LOCK == CLOSE && page < 10)              //仅在锁状态为关闭时读卡，锁开时不读卡
+ 274   2          {
+ 275   3            RFID_Check();               //读卡
+ 276   3          }
+ 277   2          keyscan();
+ 278   2          if(page == SET_ADD_PUT)       //页面提示放置卡片时,寻找空卡，并录入新卡信息
+ 279   2          {
+ 280   3            if(UI0[0] + UI0[1] + UI0[2] + UI0[3] == 0) tempcard = 0;
+ 281   3            else if(UI1[0] + UI1[1] + UI1[2] + UI1[3] == 0) tempcard = 1;
+ 282   3            else if(UI2[0] + UI2[1] + UI2[2] + UI2[3] == 0) tempcard = 2;
+ 283   3            else if(UI3[0] + UI3[1] + UI3[2] + UI3[3] == 0) tempcard = 3;
+ 284   3            
+ 285   3            while(page == SET_ADD_PUT)
+ 286   3            {
+ 287   4              if(KEY_BACK == 0) break;
+ 288   4              Delay(100);
+ 289   4            if (PcdRequest(0x52, Temp) == MI_OK)
+ 290   4            {
+ 291   5              if (PcdAnticoll(UID) == MI_OK)
+ 292   5              {
+ 293   6                switch(tempcard)
+ 294   6                {
+ 295   7                  case 0:UI0[0] = UID[0];UI0[1] = UID[1];UI0[2] = UID[2];UI0[3] = UID[3];page = SET_SUCCESS;break;
+ 296   7                  case 1:UI1[0] = UID[0];UI1[1] = UID[1];UI1[2] = UID[2];UI1[3] = UID[3];page = SET_SUCCESS;break;
+ 297   7                  case 2:UI2[0] = UID[0];UI2[1] = UID[1];UI2[2] = UID[2];UI2[3] = UID[3];page = SET_SUCCESS;break;
+ 298   7                  case 3:UI3[0] = UID[0];UI3[1] = UID[1];UI3[2] = UID[2];UI3[3] = UID[3];page = SET_SUCCESS;break;
+ 299   7                  default:break;
+ 300   7                }
+ 301   6              }
+C51 COMPILER V9.59.0.0   MAIN                                                              06/06/2023 00:05:03 PAGE 6   
+
+ 302   5            }
+ 303   4          }
+ 304   3            LCD_page(page);
+ 305   3          }
+ 306   2          if(page == SET_SUCCESS)
+ 307   2          {
+ 308   3      //      BeepTwice();
+ 309   3            Delay(1000);
+ 310   3            page = WELCOME;
+ 311   3          }
+ 312   2        }
+ 313   1      }
+ 314          
+ 315          
+ 316          void Tmr0init()
+ 317          {
+ 318   1        TMOD |= 0x01;                   //设置定时器模式:定时器0，工作方式1,16位定时器
+ 319   1        TL0 = 0x33;                     //设置定时初始值低8位：500us
+ 320   1        TH0 = 0xFE;                     //设置定时初始值高8位
+ 321   1        TR0 = 1;                        //启动定时器0
+ 322   1        ET0 = 1;
+ 323   1        EA = 1;
+ 324   1      }
+ 325          
+ 326          void RFID_Check()                 //读卡器函数，读卡并获取卡编号
+ 327          {
+ 328   1        cardnum = Rc522Test();          //获取卡编号
+ 329   1        if(cardnum == 0)                //如果为0，表示“卡片错误”，系统中没有这张卡
+ 330   1        {
+ 331   2          LCD_page(READ_ERR);           //显示卡片错误页
+ 332   2      //    Beep3times();                 //蜂鸣器响3声
+ 333   2        }
+ 334   1        else if(cardnum==1||cardnum==2||cardnum==3||cardnum == 4)     //如果卡编号为1-4，说明是系统中的4张卡
+ 335   1        { 
+ 336   2          LCD_page(READ);
+ 337   2          LOCK = OPEN;                  //锁状态-开
+ 338   2      //    BeepOnce();                   //蜂鸣器响1声
+ 339   2        }
+ 340   1        Delay(100); 
+ 341   1      }
+ 342          
+ 343          void LCD_page(uchar pagenum)      //按页面序号显示对应内容(菜单功能)
+ 344          {
+ 345   1        switch(pagenum)
+ 346   1        {
+ 347   2          case WELCOME:
+ 348   2          {
+ 349   3            LCD_Clear();                //清屏
+ 350   3            LCD_ShowString(1,6,"Welcome");
+ 351   3          }break;   
+ 352   2          case READ:                    //正常读卡界面，第一行显示卡ID号，第二行显示卡自定义编号，锁状态
+ 353   2          {
+ 354   3            LCD_Clear();              //清屏
+ 355   3            ShowID(UID);                //第一行显示卡ID号
+ 356   3            LCD_WriteCommand(0xC0);     //第二行第一格开始
+ 357   3            LCD_String(Disp3);          //显示"CardNO.:"
+ 358   3            LCD_WriteData(cardnum+48);        //显示卡编号          
+ 359   3            LCD_ShowString(2,12,Disp4);
+ 360   3            fanzhuan();
+ 361   3            Delay(1000);
+ 362   3            zhengzhuan();
+ 363   3          }break;
+C51 COMPILER V9.59.0.0   MAIN                                                              06/06/2023 00:05:03 PAGE 7   
+
+ 364   2          case READ_ERR:                //读卡错误界面，第一行显示卡ID号，第二行显示卡片错误
+ 365   2          {
+ 366   3            LCD_Clear();                //清屏
+ 367   3            ShowID(UID);                //第一行显示卡ID号
+ 368   3            LCD_ShowString(2,1,Disp2);          //显示"Err Card"
+ 369   3            Delay(1000);
+ 370   3          }break;
+ 371   2          case SET_MAIN_ADD:            //设置页-主界面-添加卡片
+ 372   2          {
+ 373   3            LCD_Clear();                //清屏
+ 374   3            LCD_ShowString(1,3, Disp5);       //显示"Add New Card"
+ 375   3          }break;
+ 376   2          case SET_MAIN_DELETE:         //设置页-主界面-删除卡片
+ 377   2          {
+ 378   3            LCD_Clear();                //清屏
+ 379   3            LCD_ShowString(1,3,Disp6);          //显示"Delete Card"
+ 380   3          }break;
+ 381   2          case SET_ADD_PUT:             //设置也-添加卡片页-放置卡片提示
+ 382   2          {
+ 383   3            LCD_Clear();                //清屏
+ 384   3            LCD_ShowString(1,3,Disp7);          //显示"PUT CARD ON"
+ 385   3          }break;
+ 386   2          case SET_DELETE_INFO1:
+ 387   2          {
+ 388   3            LCD_Clear();                //清屏
+ 389   3            LCD_ShowString(1,5,Disp9);          //显示"DELETE:"
+ 390   3            LCD_WriteCommand(0xC2);   //第2行第5格开始
+ 391   3            LCD_String(Disp3);          //显示"CardNO.:"
+ 392   3            LCD_WriteData(1+48);        //显示卡编号
+ 393   3          }break;
+ 394   2          case SET_DELETE_INFO2:
+ 395   2          {
+ 396   3            LCD_Clear();                //清屏
+ 397   3            LCD_ShowString(1,5,Disp9);          //显示"DELETE:"
+ 398   3            LCD_WriteCommand(0xC2);   //第2行第5格开始
+ 399   3            LCD_String(Disp3);          //显示"CardNO.:"
+ 400   3            LCD_WriteData(2+48);        //显示卡编号
+ 401   3          }break;
+ 402   2          case SET_DELETE_INFO3:
+ 403   2          {
+ 404   3            LCD_Clear();                //清屏
+ 405   3            LCD_ShowString(1,5,Disp9);          //显示"DELETE:"
+ 406   3            LCD_WriteCommand(0xC2);   //第2行第5格开始
+ 407   3            LCD_String(Disp3);          //显示"CardNO.:"
+ 408   3            LCD_WriteData(3+48);        //显示卡编号
+ 409   3          }break;
+ 410   2          case SET_DELETE_INFO4:
+ 411   2          {
+ 412   3            LCD_Clear();                //清屏
+ 413   3            LCD_ShowString(1,5,Disp9);          //显示"DELETE:"
+ 414   3            LCD_WriteCommand(0xC2);   //第2行第5格开始
+ 415   3            LCD_String(Disp3);          //显示"CardNO.:"
+ 416   3            LCD_WriteData(4+48);        //显示卡编号
+ 417   3          }break;
+ 418   2          case SET_SUCCESS:
+ 419   2          {
+ 420   3            LCD_Clear();                //清屏
+ 421   3            LCD_ShowString(1,5,Disp8);          //显示"SUCCESS"
+ 422   3          }
+ 423   2          default:break;
+ 424   2        }
+ 425   1      }
+C51 COMPILER V9.59.0.0   MAIN                                                              06/06/2023 00:05:03 PAGE 8   
+
+ 426          
+ 427          
+ 428          void ShowID(uchar *p)             //显示卡的卡号，以十六进制显示
+ 429          { 
+ 430   1        uchar i;
+ 431   1        LCD_WriteCommand(0x80);       //LCD第一行第一格位置
+ 432   1        LCD_String("CardID:");              //显示"CardID:"
+ 433   1        for(i=0;i<4;i++)
+ 434   1        {
+ 435   2          (p[i]/16)>9?(LCD_WriteData(p[i]/16+55)):(LCD_WriteData(p[i]/16+48));
+ 436   2          (p[i]%16)>9?(LCD_WriteData(p[i]%16+55)):(LCD_WriteData(p[i]%16+48));  //将十六进制转化为字符，显示
+ 437   2          Delay(1);
+ 438   2        }
+ 439   1      }
+ 440          
+ 441          
+ 442          void keyscan()
+ 443          {
+ 444   1        uchar i;
+ 445   1        KeyNum = MatrixKey();
+ 446   1        if(KeyNum)
+ 447   1        {
+ 448   2          if(KeyNum==1)               //设置键
+ 449   2          {
+ 450   3            if(page < 10)               //非设置界面才跳转到设置页，已在设置页时按键无效
+ 451   3            {
+ 452   4              page = SET_MAIN_ADD;
+ 453   4            }
+ 454   3          } 
+ 455   2          if(KeyNum==2)           //翻页键
+ 456   2          {
+ 457   3            if(page == SET_MAIN_ADD)    page = SET_MAIN_DELETE;
+ 458   3            else if(page == SET_MAIN_DELETE)  page = SET_MAIN_ADD;
+ 459   3            if(page == SET_DELETE_INFO1) page = SET_DELETE_INFO2;
+ 460   3            else if(page == SET_DELETE_INFO2) page = SET_DELETE_INFO3;
+ 461   3            else if(page == SET_DELETE_INFO3) page = SET_DELETE_INFO4;
+ 462   3            else if(page == SET_DELETE_INFO4) page = SET_DELETE_INFO1;
+ 463   3          }
+ 464   2          if(KeyNum==3)           //确定键
+ 465   2          {     
+ 466   3            if(page == SET_DELETE_INFO1) //删除卡0
+ 467   3            {
+ 468   4              for(i = 0;i < 4;i++)
+ 469   4              {
+ 470   5                UI0[i] = 0x00;
+ 471   5              }
+ 472   4              page = SET_SUCCESS;
+ 473   4            }
+ 474   3            if(page == SET_DELETE_INFO2) //删除卡1
+ 475   3            {
+ 476   4              for(i = 0;i < 4;i++)
+ 477   4              {
+ 478   5                UI1[i] = 0x00;
+ 479   5              }
+ 480   4              page = SET_SUCCESS;
+ 481   4            }
+ 482   3            if(page == SET_DELETE_INFO3) //删除卡2
+ 483   3            {
+ 484   4              for(i = 0;i < 4;i++)
+ 485   4              {
+ 486   5                UI2[i] = 0x00;
+ 487   5              }
+C51 COMPILER V9.59.0.0   MAIN                                                              06/06/2023 00:05:03 PAGE 9   
+
+ 488   4              page = SET_SUCCESS;
+ 489   4            }
+ 490   3            if(page == SET_DELETE_INFO4) //删除卡3
+ 491   3            {
+ 492   4              for(i = 0;i < 4;i++)
+ 493   4              {
+ 494   5                UI3[i] = 0x00;
+ 495   5              }
+ 496   4              page = SET_SUCCESS;
+ 497   4            }
+ 498   3            if(page == SET_MAIN_ADD)    page = SET_ADD_PUT;
+ 499   3            if(page == SET_MAIN_DELETE) page = SET_DELETE_INFO1;
+ 500   3      
+ 501   3          }
+ 502   2          if(KeyNum==4)               //返回键，返回欢迎界面
+ 503   2            {
+ 504   3              page = WELCOME;
+ 505   3            }
+ 506   2          
+ 507   2        }
+ 508   1      
+ 509   1          LCD_page(page);
+ 510   1                        //LCD更新显示对应页面
+ 511   1      }
+ 512          
+ 513          
+ 514          void T0isr() interrupt 1          //定时器0中断程序，中断号1，每0.5ms中断1次
+ 515          { 
+ 516   1        TL0 = 0x33;                     //设置定时初始值 @500us
+ 517   1        TH0 = 0xFE;                     //设置定时初始值
+ 518   1        if(LOCK == OPEN)                //锁状态-开时
+ 519   1        {
+ 520   2          locktime++;                 //锁开延时开始计时
+ 521   2          if(locktime >= 50)          //到达1秒时
+ 522   2          {
+ 523   3            LOCK = CLOSE;               //锁状态-关闭
+ 524   3            locktime = 0;               //清零计时
+ 525   3          }
+ 526   2        }
+ 527   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   2897    ----
+   CONSTANT SIZE    =    182    ----
+   XDATA SIZE       =     36       6
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  1 WARNING(S),  0 ERROR(S)
